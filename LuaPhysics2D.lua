@@ -15,6 +15,12 @@ local LP2D_EPSILON                  = 0.000001
 local LP2D_K                        = 1/3 --3分之一
 -----------------------------------------
 local Math = math
+function Math.Invserse(value)
+    if value == 0 or math.abs(value - 0) < LP2D_EPSILON then
+        return 0
+    end
+    return value * -1
+end
 -----------------Vector2 Declare---------------------------------
 local Vector2 = {}
 function Vector2.New(x,y)
@@ -36,7 +42,7 @@ function Vector2.Cross(vector1,vector2)
     return ret
 end
 function Vector2.CrossByValue(value,vector)
-    local x = (value * -1) * vector.y
+    local x = Math.Invserse(value) * vector.y
     local y = value * vector.x
     local ret = Vector2.New(x,y)
     return ret
@@ -70,27 +76,32 @@ end
 function Vector2.Clone(vector)
     return Vector2.New(vector.x,vector.y)
 end
+function Vector2.Invserse(vector)
+    return Vector2.New(Math.Invserse(vector.x),Math.Invserse(vector.y))
+end
 --------------------------------------------------------------
 ------------------------Matrix2X2 Declare----------------------------
 local Matrix2x2 = {}
 function Matrix2x2.New(m00,m01,m10,m11)--赋值顺序为行优先
     local ins = {
-        m00 = m00 or 0, m01 = m01 or 0,
-        m10 = m10 or 0, m11 = m11 or 0
+        m00 = m00 or 0,
+        m01 = m01 or 0,
+        m10 = m10 or 0,
+        m11 = m11 or 0
     }
     return ins
 end
 function Matrix2x2.Radians(radians)
     local cos = Math.cos(radians)
     local sin = Math.sin(radians)
-    local ret = Matrix2x2.New(cos, -1 * sin, sin, cos)
+    local ret = Matrix2x2.New(cos, Math.Invserse(sin), sin, cos)
     return ret
 end
 function Matrix2x2.Set(matrix,radians)
     local cos = Math.cos(radians)
     local sin = Math.sin(radians)
     matrix.m00 = cos
-    matrix.m01 = 0 - sin
+    matrix.m01 = Math.Invserse(sin)
     matrix.m10 = sin
     matrix.m11 = cos
 end
@@ -185,7 +196,7 @@ function LuaPhysics2D.New()
     local members = {
         _baseTime = 0,
         _startTime = 0,
-        _deltaTime = 1 / 60 / 10 * 1000,
+        _deltaTime = 1 / 60 / 10 * 1000,--单位毫秒
         _currentTime = 0,
         _frequency = 0,
         _accumulator = 0,
@@ -209,26 +220,31 @@ function LuaPhysics2D.New()
 end
 
 function LuaPhysics2D:Init()
-    if self._gravityForce then
-        print("LuaPhysics2D : Initialize successful !")
-    end
+    print("LuaPhysics2D : Initialize successful !")
 end
 
 function LuaPhysics2D:UnInit()
     print("LuaPhysics2D : Shut down !")
 end
 
-function LuaPhysics2D:CreatePhysicsBodyCircle(worldPos,radius,density)
-    local bodyId = self:CreatePhysicsBodyPolygon(worldPos,radius,LP2D_CIRCLE_VERTICES,density)
-    return bodyId
+--单位毫秒
+function LuaPhysics2D:SetDeltaTime(dt)
+    self._deltaTime = dt
 end
 
-function LuaPhysics2D:CreatePhysicsBodyRectangle(worldPos,width,height,density)
+function LuaPhysics2D:GetAllPhysicsBody()
+    return self._bodies
+end
+
+function LuaPhysics2D:CreatePhysicsBodyCircle(radius,density)
+    return self:CreatePhysicsBodyPolygon(radius,LP2D_CIRCLE_VERTICES,density)
+end
+
+function LuaPhysics2D:CreatePhysicsBodyRectangle(width,height,density)
     local bodyId = self:_FindAvailableBodyIndex()
     local bodyData = PhysicsBodyData.New()
     bodyData.id = bodyId
     bodyData.enable = true
-    bodyData.position = Vector2.New(worldPos.x,worldPos.y)
     bodyData.staticFriction = 0.4
     bodyData.dynamicFriction = 0.2
     bodyData.useGravity = true
@@ -237,7 +253,7 @@ function LuaPhysics2D:CreatePhysicsBodyRectangle(worldPos,width,height,density)
     bodyData.shape.body = bodyData
     bodyData.shape.type = PhysicsShapeType.Polygon
     --
-    self:_CreateRectanglePolygon(worldPos,width,height,bodyData.shape)
+    self:_CreateRectanglePolygon(bodyData.position,width,height,bodyData.shape)
     --
     local center,mass,inertia = self:_DoCalcuCentroidAndMomentofInertia(bodyData,density)
     for i = 1,bodyData.shape.vertexCount do
@@ -253,12 +269,11 @@ function LuaPhysics2D:CreatePhysicsBodyRectangle(worldPos,width,height,density)
     return bodyId
 end
 
-function LuaPhysics2D:CreatePhysicsBodyPolygon(worldPos,radius,sides,density)
+function LuaPhysics2D:CreatePhysicsBodyPolygon(radius,sides,density)
     local bodyId = self:_FindAvailableBodyIndex()
     local bodyData = PhysicsBodyData.New()
     bodyData.id = bodyId
     bodyData.enable = true
-    bodyData.position = Vector2.New(worldPos.x,worldPos.y)
     bodyData.staticFriction = 0.4
     bodyData.dynamicFriction = 0.2
     bodyData.useGravity = true
@@ -268,7 +283,7 @@ function LuaPhysics2D:CreatePhysicsBodyPolygon(worldPos,radius,sides,density)
     bodyData.shape.radius = radius
     bodyData.shape.type = sides == LP2D_CIRCLE_VERTICES and PhysicsShapeType.Circle or PhysicsShapeType.Polygon
     --
-    self:_CreateRandomPolygon(worldPos,radius,sides,bodyData.shape)
+    self:_CreateRandomPolygon(bodyData.position,radius,sides,bodyData.shape)
     --
     local center,mass,inertia = self:_DoCalcuCentroidAndMomentofInertia(bodyData,density)
     for i = 1,bodyData.shape.vertexCount do
@@ -293,6 +308,35 @@ function LuaPhysics2D:GetPhysicsBodyWithId(bodyId)
         end
     end
     return ret
+end
+
+function LuaPhysics2D:GetPhysicsBodyVertexsWithId(bodyId)
+    local bodyData = self:GetPhysicsBodyWithId(bodyId)
+    if not bodyData then
+        return {}
+    end
+    local ret = {}
+    for i = 1,bodyData.shape.vertexCount do
+        ret[#ret + 1] = Vector2.Add(bodyData.position,Matrix2x2.MulVector2(bodyData.shape.rotation,bodyData.shape.vertexs[i]))
+    end
+    return ret
+end
+
+function LuaPhysics2D:SetPhysicsBodyPositon(bodyId,x,y)
+    local bodyData = self:GetPhysicsBodyWithId(bodyId)
+    if bodyData then
+        bodyData.position.x = x or 0
+        bodyData.position.y = y or 0
+    end
+end
+
+function LuaPhysics2D:SetPhysicsBodyRotation(bodyId,degree)
+    local bodyData = self:GetPhysicsBodyWithId(bodyId)
+    if bodyData then
+        local radians = degree * LP2D_DEG2RAD
+        bodyData.orient = radians
+        Matrix2x2.Set(bodyData.shape.rotation,radians)
+    end
 end
 
 function LuaPhysics2D:AddForce(bodyId,force)
@@ -355,7 +399,7 @@ end
 
 function LuaPhysics2D:_CreateRandomPolygon(worldPos,radius,sides,shapedData)
     if not shapedData then
-        return
+        return 1
     end
     --计算顶点位置（局部空间下）
     local angle = 0
@@ -374,18 +418,19 @@ function LuaPhysics2D:_CreateRandomPolygon(worldPos,radius,sides,shapedData)
     for i = 1,sides do
         nextVertexIndex = i + 1 <= sides and i + 1 or 1
         sideVec = Vector2.Sub(vertexsList[nextVertexIndex],vertexsList[i])
-        local normal = Vector2.New(sideVec.y,sideVec.x * -1)
+        local normal = Vector2.New(sideVec.y,Math.Invserse(sideVec.x ))
         Vector2.Normalize(normal)
         normalsList[i] = normal
     end
     shapedData.vertexCount = sides
     shapedData.vertexs = vertexsList
     shapedData.normals = normalsList
+    return 0
 end
 
 function LuaPhysics2D:_CreateRectanglePolygon(worldPos,width,height,shapedData)
     if not shapedData then
-        return
+        return 1
     end
     local vertexCnt = 4
     local vertexsList = {}
@@ -402,13 +447,42 @@ function LuaPhysics2D:_CreateRectanglePolygon(worldPos,width,height,shapedData)
     for i = 1,vertexCnt do
         nextVertexIndex = i + 1 <= vertexCnt and i + 1 or 1
         sideVec = Vector2.Sub(vertexsList[nextVertexIndex],vertexsList[i])
-        local normal = Vector2.New(sideVec.y,sideVec.x * -1)
+        local normal = Vector2.New(sideVec.y,Math.Invserse(sideVec.x ))
         Vector2.Normalize(normal)
         normalsList[i] = normal
     end
     shapedData.vertexCount = vertexCnt
     shapedData.vertexs = vertexsList
     shapedData.normals = normalsList
+    return 0
+end
+
+function LuaPhysics2D:_CreatePolygonWithGivenVertex(worldPos,vertexs,shapeData)
+    if type(vertexs) ~= 'table' or #vertexs <= 0 then
+        return 1
+    end
+    if not shapeData then
+        return 2
+    end
+    local vertexCnt = #vertexs
+    local vertexsList = {}
+    for i = 1,vertexs do
+        vertexsList[#vertexsList + 1 ] = Vector2.New(vertexs[i].x , vertexs[i].y)
+    end
+    local nextVertexIndex = 0
+    local normalsList = {}
+    local sideVec = nil
+    for i = 1,vertexCnt do
+        nextVertexIndex = i + 1 <= vertexCnt and i + 1 or 1
+        sideVec = Vector2.Sub(vertexsList[nextVertexIndex],vertexsList[i])
+        local normal = Vector2.New(sideVec.y,Math.Invserse(sideVec.x ))
+        Vector2.Normalize(normal)
+        normalsList[i] = normal
+    end
+    shapeData.vertexCount = vertexCnt
+    shapeData.vertexs = vertexsList
+    shapeData.normals = normalsList
+    return 0
 end
 
 function LuaPhysics2D:_PhysicsStep()
@@ -590,19 +664,24 @@ function LuaPhysics2D:_SolveCircleToPolygon(manifoldData)
     local center = Matrix2x2.MulVector2(Matrix2x2.Transpose(bodyB.shape.rotation),Vector2.Sub(bodyA.position,bodyB.position))
     local separation = -1 * LP2D_FLT_MAX
     local curSeparation = 0
-    local faceNormalIndex = 0
+    local faceNormalIndex = 1
     local shapeDataB = bodyB.shape
     for i = 1,shapeDataB.vertexCount do
         curSeparation = Vector2.Dot(shapeDataB.normals[i],Vector2.Sub(center,shapeDataB.vertexs[i]))
+
+        if curSeparation > bodyA.shape.radius then
+            return
+        end
+
         if curSeparation > separation then
-            curSeparation = separation
+            separation = curSeparation
             faceNormalIndex = i
         end
     end
 
     if separation < LP2D_EPSILON then
         local worldNormal = Matrix2x2.MulVector2(shapeDataB.rotation,shapeDataB.normals[faceNormalIndex])
-        local contactNormal = Vector2.MulValue(worldNormal,-1)
+        local contactNormal = Vector2.Invserse(worldNormal)
         manifoldData.normal = contactNormal
         manifoldData.contactCount = 1
         local bodyARadius = bodyA.shape.radius
@@ -647,7 +726,7 @@ function LuaPhysics2D:_SolveCircleToPolygon(manifoldData)
         manifoldData.normal = normal
         --
         local contactPoint = Matrix2x2.MulVector2(bodyB.shape.rotation,v2)
-        contactPoint = Vector2.Add(contactPoint,bodyB.shape.position)
+        contactPoint = Vector2.Add(contactPoint,bodyB.position)
         manifoldData.contacts[1] = contactPoint
         manifoldData.contactCount = 1
     else
@@ -656,7 +735,7 @@ function LuaPhysics2D:_SolveCircleToPolygon(manifoldData)
             return
         end
         normal = Matrix2x2.MulVector2(bodyB.shape.rotation,normal)
-        local contactNormal = Vector2.MulValue(normal,-1)
+        local contactNormal = Vector2.Invserse(normal)
         manifoldData.normal = contactNormal
         manifoldData.contacts[1] = Vector2.Add(Vector2.MulValue(contactNormal,bodyARadius),bodyA.position)
         manifoldData.contactCount = 1
@@ -672,8 +751,8 @@ function LuaPhysics2D:_SolvePolygonToCircle(manifoldData)
     manifoldData.bodyB = bodyA
     self:_SolveCircleToPolygon(manifoldData)
 
-    manifoldData.normal.x = manifoldData.normal.x * -1
-    manifoldData.normal.y = manifoldData.normal.y * -1
+    manifoldData.normal.x = Math.Invserse(manifoldData.normal.x)
+    manifoldData.normal.y = Math.Invserse(manifoldData.normal.y)
 end
 
 function LuaPhysics2D:_SolvePolygonToPolygon(manifoldData)
@@ -718,10 +797,10 @@ function LuaPhysics2D:_SolvePolygonToPolygon(manifoldData)
     local sidePlaneNormal = Vector2.Sub(v2,v1)
     Vector2.Normalize(sidePlaneNormal)
 
-    local negSide = Vector2.Dot(sidePlaneNormal,v1) * -1
+    local negSide = Math.Invserse(Vector2.Dot(sidePlaneNormal,v1))
     local posSide = Vector2.Dot(sidePlaneNormal,v2)
 
-    local invertSideNormal = Vector2.MulValue(sidePlaneNormal,-1)
+    local invertSideNormal = Vector2.Invserse(sidePlaneNormal)
     local sp = self:_Clip(invertSideNormal,negSide,incidentFace[1],incidentFace[2])
     if sp < 2 then return end
     sp = self:_Clip(sidePlaneNormal,posSide,incidentFace[1],incidentFace[2])
@@ -729,14 +808,14 @@ function LuaPhysics2D:_SolvePolygonToPolygon(manifoldData)
 
     local refFaceNormal = Vector2.New(sidePlaneNormal.y, 0 - sidePlaneNormal.x)
     local refC = Vector2.Dot(refFaceNormal,v1)
-    manifoldData.normal = flip and Vector2.MulValue(refFaceNormal,-1) or refFaceNormal
+    manifoldData.normal = flip and Vector2.Invserse(refFaceNormal) or refFaceNormal
 
     local currentPoint = 0
     local separation = Vector2.Dot(refFaceNormal,incidentFace[1]) - refC
     if separation <= 0 then
         currentPoint = currentPoint + 1
         manifoldData.contacts[currentPoint] = Vector2.Clone(incidentFace[1])
-        manifoldData.penetration = -1 * separation
+        manifoldData.penetration = Math.Invserse(separation)
     else
         manifoldData.penetration = 0
     end
@@ -745,7 +824,7 @@ function LuaPhysics2D:_SolvePolygonToPolygon(manifoldData)
     if separation <= 0 then
         currentPoint = currentPoint + 1
         manifoldData.contacts[currentPoint] = Vector2.Clone(incidentFace[2])
-        manifoldData.penetration = manifoldData.penetration + (-1 * separation)
+        manifoldData.penetration = manifoldData.penetration + Math.Invserse(separation)
         manifoldData.penetration = manifoldData.penetration / currentPoint
     end
 
@@ -812,7 +891,7 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
         return
     end
 
-    if Math.abs(bodyA.inverseMass + bodyB.inverseMass) < LP2D_EPSILON then
+    if Math.abs(bodyA.inverseMass + bodyB.inverseMass) <= LP2D_EPSILON then
         bodyA.velocity = Vector2.New(0,0)
         bodyB.velocity = Vector2.New(0,0)
         return
@@ -830,8 +909,8 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
         local crossA = Vector2.CrossByValue(bodyA.angularVelocity,radiusA)
         local crossB = Vector2.CrossByValue(bodyB.angularVelocity,radiusB)
         --radiusVel = bodyB.velocity + crossB - bodyA.velocity - crossA
-        radiusVel.x = bodyB.velocity.x + (crossB.x - bodyA.velocity.x - crossA.x)
-        radiusVel.y = bodyB.velocity.y + (crossB.y - bodyA.velocity.y - crossA.y)
+        radiusVel.x = bodyB.velocity.x + crossB.x - bodyA.velocity.x - crossA.x
+        radiusVel.y = bodyB.velocity.y + crossB.y - bodyA.velocity.y - crossA.y
 
         local contactVelocity = Vector2.Dot(radiusVel,manifoldData.normal)
         if contactVelocity > 0 then
@@ -841,9 +920,9 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
         local raCrossN = Vector2.Cross(radiusA,manifoldData.normal)
         local rbCrossN = Vector2.Cross(radiusB,manifoldData.normal)
 
-        inverseMassSum = bodyA.inverseMass + bodyB.inverseMass + (raCrossN*raCrossN) * bodyA.inverseInertia * (rbCrossN*rbCrossN) * bodyB.inverseInertia
+        inverseMassSum = bodyA.inverseMass + bodyB.inverseMass + (raCrossN*raCrossN) * bodyA.inverseInertia + (rbCrossN*rbCrossN) * bodyB.inverseInertia
         --计算推力大小
-        local impluse = (1 + manifoldData.restitution) * -1 * contactVelocity
+        local impluse = Math.Invserse(1 + manifoldData.restitution) * contactVelocity
         impluse = impluse / inverseMassSum
         impluse = impluse / manifoldData.contactCount
         --计算推力方向
@@ -851,7 +930,7 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
         impluseVel.y = manifoldData.normal.y * impluse
         --整合A和B的角速度和在推力方向上的速度
         if bodyA.enable then
-            local inverseImpluseVel = Vector2.MulValue(impluseVel,-1)
+            local inverseImpluseVel = Vector2.Invserse(impluseVel)
             --velocity = velocity + (impluseVel * -1) * inverseMass
             bodyA.velocity.x = bodyA.velocity.x + inverseImpluseVel.x * bodyA.inverseMass
             bodyA.velocity.y = bodyA.velocity.y + inverseImpluseVel.y * bodyA.inverseMass
@@ -870,15 +949,15 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
         --重新计算
         crossA = Vector2.CrossByValue(bodyA.angularVelocity,radiusA)
         crossB = Vector2.CrossByValue(bodyB.angularVelocity,radiusB)
-        radiusVel.x = bodyB.velocity.x + (crossB.x - bodyA.velocity.x - crossA.x)
-        radiusVel.y = bodyB.velocity.y + (crossB.y - bodyA.velocity.y - crossA.y)
+        radiusVel.x = bodyB.velocity.x + crossB.x - bodyA.velocity.x - crossA.x
+        radiusVel.y = bodyB.velocity.y + crossB.y - bodyA.velocity.y - crossA.y
         contactVelocity = Vector2.Dot(radiusVel,manifoldData.normal)
         --计算切线
         --tangent = radiusVel - manifoldData.normal * contactVelocity
         tangent.x = radiusVel.x - manifoldData.normal.x * contactVelocity
         tangent.y = radiusVel.y - manifoldData.normal.y * contactVelocity
         --计算切线推力大小
-        local impulseTangent = Vector2.Dot(radiusVel,tangent) * -1
+        local impulseTangent = Math.Invserse(Vector2.Dot(radiusVel,tangent))
         impulseTangent = impulseTangent / inverseMassSum
         impulseTangent = impulseTangent / manifoldData.contactCount
 
@@ -895,12 +974,12 @@ function LuaPhysics2D:_IntegratePhysicsImpulses(manifoldData)
             tangentImpulse.y = tangent.y * impulseTangent
         else
             --tangentImpulse = tangent * -impluse * manifoldData.dynamicFriction
-            tangentImpulse.x = tangent.x * (impluse * -1) * manifoldData.dynamicFriction
-            tangentImpulse.y = tangent.y * (impluse * -1) * manifoldData.dynamicFriction
+            tangentImpulse.x = tangent.x * Math.Invserse(impluse) * manifoldData.dynamicFriction
+            tangentImpulse.y = tangent.y * Math.Invserse(impluse) * manifoldData.dynamicFriction
         end
         --整合A和B的角速度和在切线方向上的速度
         if bodyA.enable then
-            local inverseTanImpluseVel = Vector2.MulValue(tangentImpulse,-1)
+            local inverseTanImpluseVel = Vector2.Invserse(tangentImpulse)
             --velocity = velocity + (tangentImpulse * -1) * inverseMass
             bodyA.velocity.x = bodyA.velocity.x + inverseTanImpluseVel.x * bodyA.inverseMass
             bodyA.velocity.y = bodyA.velocity.y + inverseTanImpluseVel.y * bodyA.inverseMass
@@ -966,23 +1045,25 @@ function LuaPhysics2D:_CorrectPhysicsPosition(manifoldData)
 end
 
 function LuaPhysics2D:_FindAxisLeastPenetration(shapeDataA,shapeDataB)
-    local bestDistance = 0 - LP2D_FLT_MAX
-    local bestVertexIndex = 0
+    local bestDistance = -1 * LP2D_FLT_MAX
+    local bestVertexIndex = 1
     local curDistance = 0
     for i = 1,shapeDataA.vertexCount do
-        local normal = Vector2.Clone(shapeDataA.normals[i])
-        local worldNormal = Matrix2x2.MulVector2(shapeDataA.rotation,normal)
+        --
+        local normalInA = Matrix2x2.MulVector2(shapeDataA.rotation,shapeDataA.normals[i])
+        --
         local buT = Matrix2x2.Transpose(shapeDataB.rotation)
-        normal = Matrix2x2.MulVector2(buT,worldNormal)
-        local support = self:_GetSupport(shapeDataB,normal)
+        local normalInB = Matrix2x2.MulVector2(buT,normalInA)
+        --
+        local support = self:_GetSupport(shapeDataB,Vector2.Invserse(normalInB))
         --将A的顶点转换到世界空间下
         local worldVertexA = Matrix2x2.MulVector2(shapeDataA.rotation,shapeDataA.vertexs[i])
         worldVertexA = Vector2.Add(worldVertexA,shapeDataA.body.position)
         --取A的顶点到B的位置的方向向量,并且转换到B的局部空间下。
-        local a2bDir = Vector2.Sub(worldVertexA,shapeDataB.body.position)
-        a2bDir = Matrix2x2.MulVector2(buT,a2bDir)
+        local dirB2A = Vector2.Sub(worldVertexA,shapeDataB.body.position)
+        dirB2A = Matrix2x2.MulVector2(buT,dirB2A)
         --
-        curDistance = Vector2.Dot(normal,Vector2.Sub(support,a2bDir))
+        curDistance = Vector2.Dot(normalInB,Vector2.Sub(support,dirB2A))
         if curDistance > bestDistance then
             bestVertexIndex = i
             bestDistance = curDistance
@@ -1011,7 +1092,7 @@ function LuaPhysics2D:_FindIncidentFace(refShapeData,incShapeData,refNormalIndex
     referenceNormal = Matrix2x2.MulVector2(refShapeData.rotation,referenceNormal)
     --再用incident的旋转矩阵，将法线转换到incident的局部空间下
     referenceNormal = Matrix2x2.MulVector2(Matrix2x2.Transpose(incShapeData.rotation),referenceNormal)
-    local incVertexIndex = 0
+    local incVertexIndex = 1
     local minDot = LP2D_FLT_MAX
     local dot = 0
     for i = 1,incShapeData.vertexCount do
