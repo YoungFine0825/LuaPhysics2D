@@ -16,7 +16,7 @@ local LP2D_K                        = 1/3 --3分之一
 -----------------------------------------
 local Math = math
 function Math.Invserse(value)
-    if value == 0 or math.abs(value - 0) < LP2D_EPSILON then
+    if value == 0 then--or math.abs(value - 0) < LP2D_EPSILON then
         return 0
     end
     return value * -1
@@ -322,11 +322,26 @@ function LuaPhysics2D:GetPhysicsBodyVertexsWithId(bodyId)
     return ret
 end
 
+function LuaPhysics2D:SetPhysicsBodyEnable(bodyId,enable)
+    if type(enable) ~= 'boolean' then
+        return 1
+    end
+    local bodyData = self:GetPhysicsBodyWithId(bodyId)
+    if not bodyData then
+        return 2
+    end
+    bodyData.enable = enable
+end
+
 function LuaPhysics2D:SetPhysicsBodyPositon(bodyId,x,y)
     local bodyData = self:GetPhysicsBodyWithId(bodyId)
     if bodyData then
-        bodyData.position.x = x or 0
-        bodyData.position.y = y or 0
+        if type(x) == 'number' then
+            bodyData.position.x = x
+        end
+        if type(y) == 'number' then
+            bodyData.position.y = y
+        end
     end
 end
 
